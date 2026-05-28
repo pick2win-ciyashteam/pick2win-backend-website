@@ -1,11 +1,11 @@
 import { Router } from "express";
-import { authenticate }      from "../../middlewares/adminAuth.middleware.js";
-import adminAuthRoutes       from "./admin-auth/adminAuth.controller.js";
-import sportmonksRoutes      from "./sportmonks/sportmonks.controller.js";
+import { adminAuth }      from "../../middlewares/adminAuth.middleware.js";
+import adminAuthRoutes       from "./admin-auth/admin.auth.route.js"
+import sportmonksRoutes      from "./sportmonks/sportmonks.router.js";
 
 const router = Router();
 
-
-router.use("/sportmonks", authenticate, sportmonksRoutes);
+router.use("/admin-auth", adminAuthRoutes);
+router.use("/sportmonks", adminAuth(), sportmonksRoutes);
 
 export default router;

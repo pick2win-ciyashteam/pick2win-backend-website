@@ -149,7 +149,7 @@ export const verifyEmailService = async (token) => {
     success: true,
     message: "Email verified successfully. You can now login.",
   };
-};
+};    
 
 /* ================= LOGIN — Email + Password ================= */
 export const loginService = async ({ email, password }) => {

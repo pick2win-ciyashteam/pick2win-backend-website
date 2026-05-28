@@ -34,6 +34,7 @@ router.get("/matches/:seriesid",           getMatches);
 router.get("/sync-playingxi/:match_id",    syncPlayingXI);
 
 router.post("/fixtures", getFixturesByDateRange);
+
 router.post("/matches/date-range", getMatchesByDateRange);
 
 

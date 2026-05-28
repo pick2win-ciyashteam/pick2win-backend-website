@@ -9,8 +9,7 @@ import {
   
   getAllFixturesBetween,
   getMatchesByDateRangeService,
-  getPlayerStatsService,
-  syncAllPlayerStatsService
+
   
 } from "./sportmonks.service.js";
 
@@ -129,7 +128,6 @@ export const syncPlayingXI = async (req, res) => {
 
   
 //=============================================================================/
-
 
 export const getFixturesByDateRange = async (req, res) => {
   try {
@@ -251,7 +249,7 @@ export const getFixturesByDateRange = async (req, res) => {
     });
   }
 };
- 
+
 export const getMatchesByDateRange = async (req, res) => {
   try {
     const { from, to } = req.body;

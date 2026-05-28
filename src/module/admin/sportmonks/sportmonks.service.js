@@ -1,5 +1,5 @@
 import axios from "axios";
-import db from "../../config/db.js";
+import db from  "../../../config/db.js";
 import fetch from "node-fetch";
 const TOKEN = process.env.SPORTMONKS_TOKEN;
 const BASE_URL = "https://api.sportmonks.com/v3/football";
@@ -506,7 +506,7 @@ export const toggleMatchesService = async (matchIds, isActive, seriesId) => {
 
   return results;
 };
-
+  
 
 
 
@@ -611,7 +611,8 @@ export const getFixturesBetween = async (fromDate, toDate, page = 1) => {
   return data;
 };
 
-/* ─── Fetch ALL pages ─── */
+/* ================= GET ALL FIXTURES — all pages ================= */
+
 export const getAllFixturesBetween = async (fromDate, toDate) => {
 
   const first = await getFixturesBetween(fromDate, toDate, 1);
@@ -630,7 +631,75 @@ export const getAllFixturesBetween = async (fromDate, toDate) => {
 
   return allFixtures;
 };
-  
+
+/* ================= FORMAT SINGLE FIXTURE ================= */
+const formatFixture = (fixture) => {
+  const home = fixture.participants?.find((p) => p.meta?.location === "home");
+  const away = fixture.participants?.find((p) => p.meta?.location === "away");
+
+  const getScore = (participant) =>
+    fixture.scores?.find(
+      (s) =>
+        s.description === "CURRENT" &&
+        s.score?.participant === participant
+    )?.score?.goals ?? null;
+
+  return {
+    id:     fixture.id,
+    name:   fixture.name,
+    date:   fixture.starting_at,
+    status: fixture.state?.name || "Unknown",
+
+    league: {
+      id:   fixture.league?.id   || null,
+      name: fixture.league?.name || null,
+    },
+
+    venue: {
+      id:   fixture.venue?.id        || null,
+      name: fixture.venue?.name      || null,
+      city: fixture.venue?.city_name || null,
+    },
+
+    home: {
+      id:    home?.id         || null,
+      name:  home?.name       || null,
+      image: home?.image_path || null,
+    },
+
+    away: {
+      id:    away?.id         || null,
+      name:  away?.name       || null,
+      image: away?.image_path || null,
+    },
+
+    score: {
+      home: getScore("home"),
+      away: getScore("away"),
+    },
+  };
+};
+
+/* ================= GET FIXTURES BY DATE RANGE ================= */
+export const getFixturesByDateRangeService = async (from, to) => {
+
+  /* ── 1. UTC range ── */
+  const fromUTC = new Date(`${from}T00:00:00.000Z`);  // ✅ UTC not local
+  const toUTC   = new Date(`${to}T23:59:59.999Z`);    // ✅ UTC not local
+
+  /* ── 2. Fetch all pages ── */
+  const fixtures = await getAllFixturesBetween(from, to);
+
+  /* ── 3. Filter strictly within range ── */
+  const filtered = fixtures.filter((fixture) => {
+    if (!fixture.starting_at) return false;
+    const fixtureDate = new Date(fixture.starting_at);
+    return fixtureDate >= fromUTC && fixtureDate <= toUTC;
+  });
+
+  /* ── 4. Format ── */
+  return filtered.map(formatFixture);
+};
 
 export const getMatchesByDateRangeService = async (fromDate, toDate) => {
   // ── All pages fetch ──
