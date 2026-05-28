@@ -4,7 +4,7 @@ import Joi from "joi";
 export const signupSchema = Joi.object({
   fullname:      Joi.string().min(3).max(100).required(),
   email:         Joi.string().email().required(),
-  mobile:        Joi.string().pattern(/^[0-9]{10,15}$/).required(),
+  mobile: Joi.string().pattern(/^[0-9]{5,15}$/).required(),
   country:       Joi.string().min(2).max(100).required(),
   date_of_birth: Joi.date().less("now").required(),
   password:      Joi.string().min(6).max(100).required(),
@@ -12,7 +12,7 @@ export const signupSchema = Joi.object({
 
 /* ── Verify Mobile OTP ── */
 export const verifyMobileOtpSchema = Joi.object({
-  mobile: Joi.string().pattern(/^[0-9]{10,15}$/).required(),  
+  mobile: Joi.string().pattern(/^[0-9]{5,15}$/).required(),  
   otp:    Joi.string().length(6).required(),
 });
 
@@ -27,7 +27,7 @@ export const verifyEmailOtpSchema = Joi.object({
 
 /* ── Resend OTP ── */
 export const resendOtpSchema = Joi.object({
-  mobile: Joi.string().pattern(/^[0-9]{10,15}$/),
+  mobile: Joi.string().pattern(/^[0-9]{5,15}$/),
   email:  Joi.string().email(),
   type:   Joi.string().valid("mobile", "email").required(),
 }).or("mobile", "email");   
