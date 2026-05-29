@@ -32,7 +32,7 @@ app.use(cors({
   optionsSuccessStatus: 200,
 }));
 
-// ── Stripe webhook — raw body, JSON parser కంటే ముందు ──
+ 
 app.post(
   "/api/webhook/stripe",
   express.raw({ type: "application/json" }),
