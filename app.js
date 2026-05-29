@@ -8,12 +8,16 @@ import { stripeWebhook } from "./src/module/user/deposite/deposite.webhook.js";
 
 const app = express();
 
-
+ // ✅ MUST be FIRST — before any middleware
 app.post(
   "/api/webhook/stripe",
   express.raw({ type: "application/json" }),
   stripeWebhook
 );
+
+// ✅ STEP 2 — then other middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 app.use(helmet());
 app.use(morgan("combined"));
@@ -39,8 +43,8 @@ app.use(cors({
   optionsSuccessStatus: 200,
 }));
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// app.use(express.json());
+// app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", routes);
 

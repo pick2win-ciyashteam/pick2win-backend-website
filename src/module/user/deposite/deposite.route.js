@@ -1,13 +1,18 @@
 import { Router }       from "express";
-
-import { createPointsPayment, getMyPoints, getMyTransactions, getStripeConfig } from "./deposite.controller.js";
+import { authenticate } from "../../../middlewares/auth.middleware.js";
+import {
+  createPointsPayment,
+  getMyPoints,
+  getMyTransactions,
+  getStripeConfig,
+} from "./deposite.controller.js";
 
 const router = Router();
 
-router.post("/buy-points",     createPointsPayment);
-router.get ("/stripe/config",  getStripeConfig);
-
-router.get("/my-points",        getMyPoints);
-router.get("/my-transactions",  getMyTransactions);
+// ✅ authenticate add చేయి
+router.post("/buy-points",      authenticate, createPointsPayment);
+router.get ("/stripe/config",   authenticate, getStripeConfig);
+router.get ("/my-points",       authenticate, getMyPoints);
+router.get ("/my-transactions", authenticate, getMyTransactions);
 
 export default router;
