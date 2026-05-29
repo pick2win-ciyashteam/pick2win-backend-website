@@ -75,27 +75,91 @@ export const getProfile = async (req, res) => {
   try {
     const [[user]] = await db.execute(
       `SELECT
-         u.id, u.fullname, u.email, u.mobile,
-         u.country, u.date_of_birth,
-         u.email_verify, u.mobile_verify,
-         u.account_status, u.created_at,
-         COALESCE(up.coins, 0) AS coins
+         u.id,
+         u.fullname,
+         u.email,
+         u.mobile,
+         u.country,
+         u.date_of_birth,
+         u.email_verify,
+         u.mobile_verify,
+         u.account_status,
+         u.created_at,
+
+         COALESCE(uc.coins, 0) AS coins,
+
+         us.plan_id,
+         us.plan_name,
+         us.matches_allowed,
+         us.matches_used,
+         (us.matches_allowed - us.matches_used) AS matches_remaining,
+         us.amount AS subscription_amount,
+         us.start_date AS subscription_start_date,
+         us.expiry_date AS subscription_expiry_date,
+         us.status AS subscription_status
+
        FROM users u
-       LEFT JOIN user_coins up ON up.user_id = u.id
-       WHERE u.id = ? AND u.account_status != 'deleted'`,
+
+       LEFT JOIN user_coins uc
+         ON uc.user_id = u.id
+
+       LEFT JOIN user_subscriptions us
+         ON us.user_id = u.id
+        AND us.status = 'active'
+
+       WHERE u.id = ?
+         AND u.account_status != 'deleted'
+
+       ORDER BY us.id DESC
+       LIMIT 1`,
       [req.user.id]
     );
 
     if (!user) {
-      return res.status(404).json({ success: false, message: "User not found" });
+      return res.status(404).json({
+        success: false,
+        message: "User not found"
+      });
     }
 
-    res.status(200).json({ success: true, data: user });
+    res.status(200).json({
+      success: true,
+      data: user
+    });
 
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({
+      success: false,
+      message: err.message
+    });
   }
 };
+
+// export const getProfile = async (req, res) => {
+//   try {
+//     const [[user]] = await db.execute(
+//       `SELECT
+//          u.id, u.fullname, u.email, u.mobile,
+//          u.country, u.date_of_birth,
+//          u.email_verify, u.mobile_verify,
+//          u.account_status, u.created_at,
+//          COALESCE(up.coins, 0) AS coins
+//        FROM users u
+//        LEFT JOIN user_coins up ON up.user_id = u.id
+//        WHERE u.id = ? AND u.account_status != 'deleted'`,
+//       [req.user.id]
+//     );
+
+//     if (!user) {
+//       return res.status(404).json({ success: false, message: "User not found" });
+//     }
+
+//     res.status(200).json({ success: true, data: user });
+
+//   } catch (err) {
+//     res.status(500).json({ success: false, message: err.message });
+//   }
+// };
 
 /* ================= UPDATE PROFILE ================= */
 export const updateProfile = async (req, res) => {
