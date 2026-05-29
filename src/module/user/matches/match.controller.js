@@ -119,24 +119,23 @@ export const getMatchFullDetails = async (req, res) => {
     const awayTeam = teams.find((t) => Number(t.id) === Number(match.away_team_id)) || null;
 
     /* ── 3. Match Players ── */
-    const [matchPlayers] = await db.execute(
-      `SELECT
-         mp.id,
-         mp.match_id,
-         mp.team_id,
-         mp.player_name,
-         mp.position,
-         mp.is_playing,
-         mp.is_substitute,
-         mp.is_pre_squad,
-         mp.provider_player_id,
-         mp.logo,
-         mp.created_at
-       FROM match_players mp
-       WHERE mp.match_id = ?
-       ORDER BY mp.is_playing DESC, mp.is_substitute DESC`,
-      [match.id]
-    );
+   const [matchPlayers] = await db.execute(
+  `SELECT
+     mp.id,
+     mp.match_id,
+     mp.team_id,
+     mp.player_name,
+     mp.position,
+     mp.is_playing,
+     mp.is_substitute,
+     mp.provider_player_id,
+     mp.logo,
+     mp.created_at
+   FROM match_players mp
+   WHERE mp.match_id = ?
+   ORDER BY mp.is_playing DESC, mp.is_substitute DESC`,
+  [match.id]
+);
 
     /* ── 4. Split by team ── */
     const homePlayers = matchPlayers.filter(
