@@ -69,10 +69,11 @@ export const logout = async (req, res) => {
   }
 };
 
+ 
 /* ================= GET PROFILE ================= */
-
 export const getProfile = async (req, res) => {
   try {
+    /* ── 1. User + Subscription ── */
     const [[user]] = await db.execute(
       `SELECT
          u.id,
@@ -86,80 +87,99 @@ export const getProfile = async (req, res) => {
          u.account_status,
          u.created_at,
 
-         COALESCE(uc.coins, 0) AS coins,
-
+         -- Subscription
          us.plan_id,
          us.plan_name,
          us.matches_allowed,
          us.matches_used,
          (us.matches_allowed - us.matches_used) AS matches_remaining,
-         us.amount AS subscription_amount,
-         us.start_date AS subscription_start_date,
-         us.expiry_date AS subscription_expiry_date,
-         us.status AS subscription_status
+         us.amount                               AS subscription_amount,
+         us.start_date                           AS subscription_start,
+         us.expiry_date                          AS subscription_expiry,
+         us.status                               AS subscription_status
 
        FROM users u
-
-       LEFT JOIN user_coins uc
-         ON uc.user_id = u.id
-
        LEFT JOIN user_subscriptions us
          ON us.user_id = u.id
         AND us.status = 'active'
-
        WHERE u.id = ?
          AND u.account_status != 'deleted'
-
        ORDER BY us.id DESC
        LIMIT 1`,
       [req.user.id]
     );
 
     if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found"
-      });
+      return res.status(404).json({ success: false, message: "User not found" });
     }
+
+    /* ── 2. Coins Wallet ── */
+    const [[wallet]] = await db.execute(
+      `SELECT coins FROM user_coins WHERE user_id = ?`,
+      [req.user.id]
+    );
+
+    /* ── 3. Total purchased coins ── */
+    const [[purchased]] = await db.execute(
+      `SELECT COALESCE(SUM(coins), 0) AS total
+       FROM coins_transactions
+       WHERE user_id = ? AND coins > 0 AND status = 'success'`,
+      [req.user.id]
+    );
+
+    /* ── 4. Total spent coins ── */
+    const [[spent]] = await db.execute(
+      `SELECT COALESCE(SUM(ABS(coins)), 0) AS total
+       FROM coins_transactions
+       WHERE user_id = ? AND coins < 0 AND status = 'success'`,
+      [req.user.id]
+    );
+
+    const availableCoins = wallet    ? Number(wallet.coins)      : 0;
+    const totalCoins     = purchased ? Number(purchased.total)   : 0;
+    const usedCoins      = spent     ? Number(spent.total)       : 0;
 
     res.status(200).json({
       success: true,
-      data: user
+      data: {
+        /* ── Personal Info ── */
+        id:             user.id,
+        fullname:       user.fullname,
+        email:          user.email,
+        mobile:         user.mobile,
+        country:        user.country,
+        date_of_birth:  user.date_of_birth,
+        email_verify:   user.email_verify,
+        mobile_verify:  user.mobile_verify,
+        account_status: user.account_status,
+        created_at:     user.created_at,
+
+        /* ── Coins Wallet ── */
+        coins: {
+          total_coins:     totalCoins,
+          used_coins:      usedCoins,
+          available_coins: availableCoins,
+        },
+
+        /* ── Subscription ── */
+        subscription: user.plan_id ? {
+          plan_id:           user.plan_id,
+          plan_name:         user.plan_name,
+          matches_allowed:   user.matches_allowed,
+          matches_used:      user.matches_used,
+          matches_remaining: user.matches_remaining,
+          amount:            user.subscription_amount,
+          start_date:        user.subscription_start,
+          expiry_date:       user.subscription_expiry,
+          status:            user.subscription_status,
+        } : null,
+      },
     });
 
   } catch (err) {
-    res.status(500).json({
-      success: false,
-      message: err.message
-    });
+    res.status(500).json({ success: false, message: err.message });
   }
 };
-
-// export const getProfile = async (req, res) => {
-//   try {
-//     const [[user]] = await db.execute(
-//       `SELECT
-//          u.id, u.fullname, u.email, u.mobile,
-//          u.country, u.date_of_birth,
-//          u.email_verify, u.mobile_verify,
-//          u.account_status, u.created_at,
-//          COALESCE(up.coins, 0) AS coins
-//        FROM users u
-//        LEFT JOIN user_coins up ON up.user_id = u.id
-//        WHERE u.id = ? AND u.account_status != 'deleted'`,
-//       [req.user.id]
-//     );
-
-//     if (!user) {
-//       return res.status(404).json({ success: false, message: "User not found" });
-//     }
-
-//     res.status(200).json({ success: true, data: user });
-
-//   } catch (err) {
-//     res.status(500).json({ success: false, message: err.message });
-//   }
-// };
 
 /* ================= UPDATE PROFILE ================= */
 export const updateProfile = async (req, res) => {
@@ -169,6 +189,13 @@ export const updateProfile = async (req, res) => {
 
     for (const key of ALLOWED) {
       if (req.body[key] !== undefined) sanitized[key] = req.body[key];
+    }
+
+    if (!Object.keys(sanitized).length) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid fields to update",
+      });
     }
 
     /* ── Age check ── */
@@ -191,14 +218,14 @@ export const updateProfile = async (req, res) => {
       [...setValues, req.user.id]
     );
 
+    /* ── Return updated profile ── */
     const [[updated]] = await db.execute(
       `SELECT
          id, fullname, email, mobile,
          country, date_of_birth,
          email_verify, mobile_verify,
          account_status, created_at
-       FROM users
-       WHERE id = ?`,
+       FROM users WHERE id = ?`,
       [req.user.id]
     );
 

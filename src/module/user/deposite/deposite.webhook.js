@@ -3,7 +3,6 @@ import { addCoinsService } from "./deposite.service.js";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
-
 export const stripeWebhook = async (req, res) => {
   const sig = req.headers["stripe-signature"];
   let event;
@@ -14,22 +13,22 @@ export const stripeWebhook = async (req, res) => {
       sig,
       process.env.STRIPE_WEBHOOK_SECRET
     );
-  } catch (err) {  
+  } catch (err) {
     console.error("❌ Webhook signature failed:", err.message);
     return res.status(400).send(`Webhook Error: ${err.message}`);
   }
 
-  // ✅ ADD THIS LOG
   console.log("🔔 Event type:", event.type);
-  console.log("🔔 Full metadata:", JSON.stringify(event.data.object.metadata));
 
   if (event.type !== "payment_intent.succeeded")
     return res.json({ received: true });
 
   const paymentIntent = event.data.object;
+  console.log("🔔 Metadata:", JSON.stringify(paymentIntent.metadata));
 
-  if (paymentIntent.metadata?.type !== "points_purchase") {
-    console.log("⚠️ Not a points purchase — metadata type:", paymentIntent.metadata?.type);
+  /* ── ✅ coins_purchase check ── */
+  if (paymentIntent.metadata?.type !== "coins_purchase") {
+    console.log("⚠️ Not a coins purchase:", paymentIntent.metadata?.type);
     return res.json({ received: true });
   }
 
@@ -37,20 +36,21 @@ export const stripeWebhook = async (req, res) => {
   const amount          = paymentIntent.amount / 100;
   const paymentIntentId = paymentIntent.id;
 
-  console.log(`📦 userId:${userId} plan_id:${plan_id} coins:${coins}`);
-
   if (!userId || !plan_id || !coins) {
-    console.error("❌ Missing metadata:", { userId, plan_id, coins });
+    console.error("❌ Missing metadata");
     return res.json({ received: true });
   }
 
   try {
-    await addCoinsService(userId, plan_id, Number(coins), amount, paymentIntentId);
-    console.log(`✅ Coins added — userId:${userId} coins:${coins}`);
+    const result = await addCoinsService(
+      userId, plan_id, Number(coins), amount, paymentIntentId
+    );
+    console.log(`✅ Coins added — userId:${userId} coins:${coins} total:${result.totalCoins}`);
     return res.json({ received: true });
+
   } catch (err) {
     if (err.message === "Payment already processed") {
-      console.log("⚠️ Duplicate webhook ignored:", paymentIntentId);
+      console.log("⚠️ Duplicate ignored:", paymentIntentId);
       return res.json({ received: true });
     }
     console.error(`❌ Coins update failed:`, err.message);

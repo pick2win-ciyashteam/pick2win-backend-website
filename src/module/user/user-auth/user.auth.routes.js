@@ -19,11 +19,11 @@ router.patch ("/update",  authenticate, v.updateProfile, c.updateProfile);
 router.delete("/delete",  authenticate,              c.deleteAccount);
 
 export default router;
+  
 
 
 
-
-
+   
 
 
 
