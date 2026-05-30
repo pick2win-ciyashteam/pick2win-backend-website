@@ -106,7 +106,7 @@ export const getMatches = async (req, res) => {
 ══════════════════════════════════════════ */
 export const syncPlayingXI = async (req, res) => {
   try {
-    const { match_id } = req.params;
+    const { match_id } = req.params;  
     if (!match_id)
       return res.status(400).json({ success: false, message: "match_id required" });
 
