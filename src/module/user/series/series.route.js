@@ -8,7 +8,7 @@ const router = express.Router();
 
 router.get("/:seriesid", authenticate,  getSeriesById);
 
-router.get("/", authenticate,  getAllSeries);
+router.get("/", authenticate,  getAllSeries);  
   
 
 export default router;

@@ -1,4 +1,4 @@
-import db from "../../../config/db.js";
+import db from "../../../config/db.js"; 
 
 /* ================= GET ALL SERIES ================= */
 export const getAllSeries = async (req, res) => {
@@ -8,7 +8,7 @@ export const getAllSeries = async (req, res) => {
               start_date, end_date, created_at,
               status, is_selected
        FROM series
-       WHERE status = 'active'        -- ✅ is_selected remove చేశాం
+       WHERE status = 'active'         
        ORDER BY created_at DESC`
     );
 
@@ -19,44 +19,53 @@ export const getAllSeries = async (req, res) => {
     const result = await Promise.all(
       seriesRows.map(async (series) => {
 
-        const [matches] = await db.execute(
-          `SELECT
+     const [matches] = await db.execute(
+  `SELECT
       m.id,
       m.provider_match_id,
       m.series_id,
       m.start_time,
       m.status,
-      m.matchdate,
       m.lineupavailable,
       m.lineup_status,
       m.is_active,
+
       COALESCE(ht.short_name, ht.name, 'TBA') AS home_team_name,
       COALESCE(awt.short_name, awt.name, 'TBA') AS away_team_name,
+
       ht.logo  AS home_team_logo,
       awt.logo AS away_team_logo
+
    FROM matches m
-   LEFT JOIN teams ht  ON m.home_team_id = ht.id
-   LEFT JOIN teams awt ON m.away_team_id = awt.id
+
+   LEFT JOIN teams ht
+          ON m.home_team_id = ht.id
+
+   LEFT JOIN teams awt
+          ON m.away_team_id = awt.id
+
    WHERE m.series_id = ?
      AND m.is_active = 1
      AND (
-       m.status = 'LIVE'                          -- ✅ live matches always show
-       OR (
-         m.status = 'UPCOMING'
-         AND m.start_time >= CURDATE()             -- ✅ today + future only
-       )
-     )
+          m.status = 'LIVE'
+          OR (
+               m.status = 'UPCOMING'
+               AND m.start_time >= NOW()
+             )
+         )
+
    ORDER BY
-     CASE m.status
-       WHEN 'LIVE'     THEN 1                      -- LIVE first
-       WHEN 'UPCOMING' THEN 2                      -- UPCOMING second
-     END,
-     m.start_time ASC`,
-          [series.seriesid]
-        );
+      CASE
+        WHEN m.status = 'LIVE' THEN 1
+        WHEN m.status = 'UPCOMING' THEN 2
+        ELSE 3
+      END,
+      m.start_time ASC`,
+  [series.seriesid]
+);
 
         return {
-          ...series,
+          ...series,  
           total_matches: matches.length,
           matches,
         };
