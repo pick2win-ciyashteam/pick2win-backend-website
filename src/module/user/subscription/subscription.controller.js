@@ -25,27 +25,7 @@ export const getActivePlans = async (req, res) => {
   }
 };
 
-// export const buySubscription = async (req, res) => {
-//   try {
-//     const { planId, paymentReference } = req.body;
-
-//     const result =
-//       await buySubscriptionService(
-//         req.user.id,
-//         planId,
-//         paymentReference
-//       );
-
-//     return res.status(200).json(result);
-
-//   } catch (error) {
-//     return res.status(400).json({
-//       success: false,
-//       message: error.message,
-//     });
-//   }
-// };
-
+ 
 export const getMySubscription = async (req, res) => {
   try {
     const subscription = await getMySubscriptionService(req.user.id);

@@ -4,7 +4,7 @@ import {
   createCoinsPayment,
   getMyCoins,
   getMyTransactions,
-  getStripeConfig,
+  getStripeConfig,  
 } from "./deposite.controller.js";
 
 const router = Router();    
