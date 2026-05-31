@@ -96,21 +96,31 @@ import axios from "axios";
 
 
  
+
 export const generateTeams = async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { match_id, home_players, away_players } = req.body;
+    const userId   = req.user.id;
+    const { match_id, team_a, team_b } = req.body;
 
-    if (!match_id || !home_players || !away_players) {
+    /* ── 1. Validate ── */
+    if (!match_id || !team_a || !team_b) {
       return res.status(400).json({
         success: false,
-        message: "match_id, home_players, away_players required",
+        message: "match_id, team_a, team_b required",
       });
     }
 
-    /* ── Check already generated ── */
+    if (!Array.isArray(team_a) || !Array.isArray(team_b)) {
+      return res.status(400).json({
+        success: false,
+        message: "team_a and team_b must be arrays",
+      });
+    }
+
+    /* ── 2. Check already generated ── */
     const [[existing]] = await db.execute(
-      `SELECT id FROM match_generation_log WHERE match_id = ? AND user_id = ?`,
+      `SELECT id FROM match_generation_log
+       WHERE match_id = ? AND user_id = ?`,
       [match_id, userId]
     );
     if (existing) {
@@ -120,122 +130,186 @@ export const generateTeams = async (req, res) => {
       });
     }
 
-    /* ── Convert real players → UCT format ── */
-    const convertToUCT = (players, side) => {
-      const counters = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
-      return players.map((p) => {
-        counters[p.role]++;
-        const codedName = `${p.role[0]}${counters[p.role]}_${side}`;
-        // GK_A, D1_A, M1_A etc.
-        return {
-          name:     codedName,
-          role:     p.role,
-          captain:  p.captain  || undefined,
-          mandate:  p.mandate  || undefined,
-          // keep original name for DB storage
-          original_name:        p.name,
-          provider_player_id:   p.provider_player_id,
-        };
+    /* ── 3. Check coins ── */
+    const [[wallet]] = await db.execute(
+      `SELECT available_coins FROM user_coins WHERE user_id = ?`,
+      [userId]
+    );
+
+    if (!wallet || Number(wallet.available_coins) < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient coins. Please buy coins to generate teams.",
       });
-    };
+    }
 
-    const team_a_uct = convertToUCT(home_players, "A");
-    const team_b_uct = convertToUCT(away_players, "B");
-
-    /* ── UCT API call ── */
+    /* ── 4. Call UCT API — same format as they expect ── */
     let uctTeams = [];
     try {
       const response = await axios.post(
         `${process.env.UCT_API}/football/teams`,
+        { team_a, team_b },
         {
-          team_a: team_a_uct.map(p => ({
-            name:    p.name,
-            role:    p.role,
-            ...(p.captain && { captain: p.captain }),
-            ...(p.mandate && { mandate: p.mandate }),
-          })),
-          team_b: team_b_uct.map(p => ({
-            name:    p.name,
-            role:    p.role,
-            ...(p.captain && { captain: p.captain }),
-            ...(p.mandate && { mandate: p.mandate }),
-          })),
-        },
-        { timeout: 30000 }
+          headers: { "Content-Type": "application/json" },
+          timeout: 30000,
+        }
       );
 
       uctTeams = response.data || [];
-      console.log(`✅ UCT teams: ${uctTeams.length} players across 20 teams`);
+      console.log(`✅ UCT API — ${uctTeams.length} player entries across 20 teams`);
 
     } catch (apiError) {
       console.error("❌ UCT API Error:", apiError.response?.data || apiError.message);
       return res.status(500).json({
         success: false,
-        message: "UCT API failed: " + (apiError.response?.data?.message || apiError.message),
+        message: "UCT API failed: " + (apiError.message),
       });
     }
 
     if (!uctTeams.length) {
-      return res.status(400).json({ success: false, message: "UCT API returned no teams" });
+      return res.status(400).json({
+        success: false,
+        message: "UCT API returned no teams",
+      });
     }
 
-    /* ── Build name mapping — coded → real ── */
+    /* ── 5. Build name map — coded name → real player info ── */
+    // team_a players map
     const nameMap = {};
-    [...team_a_uct, ...team_b_uct].forEach(p => {
-      nameMap[p.name] = {
-        original_name:       p.original_name,
-        provider_player_id:  p.provider_player_id,
-      };
-    });
 
-    /* ── Delete old teams ── */
-    await db.execute(
-      `DELETE FROM user_teams WHERE match_id = ? AND user_id = ?`,
-      [match_id, userId]
-    );
+    // Build from team_a
+    const aCounters = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
+    for (const p of team_a) {
+      aCounters[p.role] = (aCounters[p.role] || 0) + 1;
+      const codedName = `${p.role[0]}${aCounters[p.role]}_A`;
+      // GK→GK1_A, DEF→D1_A, MID→M1_A, FWD→F1_A
+      const prefix = p.role === "GK" ? "GK" :
+                     p.role === "DEF" ? "D" :
+                     p.role === "MID" ? "M" : "F";
+      const key = `${prefix}${aCounters[p.role]}_A`;
+      nameMap[key] = p.name;
+    }
 
-    /* ── Store 20 teams ── */
-    for (const player of uctTeams) {
-      const mapped = nameMap[player.name] || {};
-      await db.execute(
-        `INSERT INTO user_teams
-           (match_id, user_id, dt_no, name, role, cap,
-            original_name, provider_player_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    // Build from team_b
+    const bCounters = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
+    for (const p of team_b) {
+      bCounters[p.role] = (bCounters[p.role] || 0) + 1;
+      const prefix = p.role === "GK" ? "GK" :
+                     p.role === "DEF" ? "D" :
+                     p.role === "MID" ? "M" : "F";
+      const key = `${prefix}${bCounters[p.role]}_B`;
+      nameMap[key] = p.name;
+    }
+
+    console.log("📋 Name map:", nameMap);
+
+    /* ── 6. Transaction — deduct coin + store teams ── */
+    const conn = await db.getConnection();
+    try {
+      await conn.beginTransaction();
+
+      /* ── Deduct 1 coin ── */
+      const [[currentWallet]] = await conn.query(
+        `SELECT available_coins, used_coins, total_coins
+         FROM user_coins WHERE user_id = ? FOR UPDATE`,
+        [userId]
+      );
+
+      if (!currentWallet || Number(currentWallet.available_coins) < 1) {
+        await conn.rollback();
+        conn.release();
+        return res.status(400).json({
+          success: false,
+          message: "Insufficient coins",
+        });
+      }
+
+      await conn.query(
+        `UPDATE user_coins
+         SET available_coins = available_coins - 1,
+             used_coins      = used_coins + 1
+         WHERE user_id = ?`,
+        [userId]
+      );
+
+      /* ── Coin transaction log ── */
+      await conn.query(
+        `INSERT INTO coins_transactions
+           (user_id, coins, amount, transaction_type,
+            opening_points, closing_points, description, status)
+         VALUES (?, -1, 0, 'spent', ?, ?, ?, 'success')`,
         [
-          match_id,
           userId,
-          player.dt_no,
-          player.name,
-          player.role,
-          player.cap || null,
-          mapped.original_name       || player.name,
-          mapped.provider_player_id  || null,
+          Number(currentWallet.available_coins),
+          Number(currentWallet.available_coins) - 1,
+          `Team generation — match ${match_id}`,
         ]
       );
+
+      /* ── Delete old teams ── */
+      await conn.query(
+        `DELETE FROM user_teams WHERE match_id = ? AND user_id = ?`,
+        [match_id, userId]
+      );
+
+      /* ── Store 20 teams ── */
+      for (const player of uctTeams) {
+        const realName = nameMap[player.name] || player.name;
+        await conn.query(
+          `INSERT INTO user_teams
+             (match_id, user_id, dt_no, name, role, cap, original_name)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            match_id,
+            userId,
+            player.dt_no,
+            player.name,          // coded name GK_A, D1_A etc
+            player.role,
+            player.cap  || null,
+            realName,             // real player name
+          ]
+        );
+      }
+
+      /* ── Generation log ── */
+      const totalTeams = [...new Set(uctTeams.map(p => p.dt_no))].length;
+
+      await conn.query(
+        `INSERT INTO match_generation_log
+           (match_id, user_id, total_teams)
+         VALUES (?, ?, ?)
+         ON DUPLICATE KEY UPDATE
+           total_teams = VALUES(total_teams),
+           created_at  = NOW()`,
+        [match_id, userId, totalTeams]
+      );
+
+      await conn.commit();
+
+      return res.status(200).json({
+        success:       true,
+        message:       `${totalTeams} teams generated successfully`,
+        total_teams:   totalTeams,
+        coins_used:    1,
+        coins_remaining: Number(currentWallet.available_coins) - 1,
+      });
+
+    } catch (err) {
+      await conn.rollback();
+      throw err;
+    } finally {
+      conn.release();
     }
-
-    /* ── Log ── */
-    const totalTeams = [...new Set(uctTeams.map(p => p.dt_no))].length;
-    await db.execute(
-      `INSERT INTO match_generation_log (match_id, user_id, total_teams)
-       VALUES (?, ?, ?)
-       ON DUPLICATE KEY UPDATE total_teams = VALUES(total_teams), created_at = NOW()`,
-      [match_id, userId, totalTeams]
-    );
-
-    return res.status(200).json({
-      success:      true,
-      message:      `${totalTeams} teams generated successfully`,
-      total_teams:  totalTeams,
-      total_players: uctTeams.length,
-    });
 
   } catch (err) {
     console.error("generateTeams error:", err.message);
-    return res.status(500).json({ success: false, message: err.message });
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 };
+ 
 
 export const getMyTeams = async (req, res) => {
   try {
