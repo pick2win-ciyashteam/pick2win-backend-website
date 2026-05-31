@@ -9,6 +9,8 @@ import planRoutes        from "../user/subscription/subscription.route.js";
 import depositeRoutes     from "../user/deposite/deposite.route.js";
 import lineupRoutes      from "./lineup/lineup.route.js";
 import teamsRoutes       from "./teams/teams.route.js";
+ 
+
 const router = Router();
 
 router.use("/user-auth",   userAuthRoutes);
@@ -20,4 +22,6 @@ router.use("/plans",planRoutes);
 router.use("/deposite",authenticate,depositeRoutes);
 router.use("/lineup",lineupRoutes);
 router.use("/teams",authenticate,teamsRoutes);
+
+
 export default router;    

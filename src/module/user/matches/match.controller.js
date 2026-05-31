@@ -3,15 +3,29 @@ import  db  from  "../../../config/db.js";
 import {   getMatchesService } from  "./matches.service.js"
 
 
+
 export const getAllMatches = async (req, res) => {
-
-
   try {
     const [rows] = await db.execute(`
       SELECT 
         m.id,
         m.series_id,
-        m.start_time,
+
+        DATE_FORMAT(
+          CONVERT_TZ(m.start_time, '+00:00', '+05:30'),
+          '%d-%m-%Y'
+        ) AS match_date,
+
+        DATE_FORMAT(
+          CONVERT_TZ(m.start_time, '+00:00', '+05:30'),
+          '%h:%i %p'
+        ) AS match_time,
+
+        DATE_FORMAT(
+          CONVERT_TZ(m.start_time, '+00:00', '+05:30'),
+          '%d-%m-%Y %h:%i %p'
+        ) AS start_time_ist,
+
         m.status,
         m.created_at,
 
@@ -22,7 +36,6 @@ export const getAllMatches = async (req, res) => {
         at.name AS away_team_name
 
       FROM matches m
-
       JOIN teams ht ON m.home_team_id = ht.id
       JOIN teams at ON m.away_team_id = at.id
 
@@ -37,7 +50,6 @@ export const getAllMatches = async (req, res) => {
     });
 
   } catch (error) {
-
     return res.status(500).json({
       success: false,
       error: error.message

@@ -9,10 +9,53 @@ const TOKEN_ERRORS = {
 };
 
 /* ================= AUTHENTICATE ================= */
+// export const authenticate = async (req, res, next) => {
+//   try {
+
+//     /* ── Extract Token ── */
+//     const authHeader = req.headers.authorization;
+
+//     if (!authHeader?.startsWith("Bearer ")) {
+//       return res.status(401).json({
+//         success: false,
+//         message: "Authorization header missing or malformed",
+//       });
+//     }
+
+//     const token = authHeader.split(" ")[1];
+
+//     /* ── Verify Token ── */
+//     let decoded;
+//     try {
+//       decoded = jwt.verify(token, process.env.JWT_SECRET, {
+//         algorithms: ["HS256"],
+//       });
+//     } catch (err) {
+//       const message = TOKEN_ERRORS[err.name] || "Token verification failed";
+//       return res.status(401).json({ success: false, message });
+//     }
+
+//     /* ── Validate Payload ── */
+//     if (!decoded?.id || !decoded?.email) {
+//       return res.status(401).json({
+//         success: false,
+//         message: "Invalid token payload",
+//       });
+//     }
+
+//     /* ── Attach User ── */
+//     req.user = decoded;
+//     next();
+
+//   } catch (err) {
+//     if (process.env.NODE_ENV !== "production")
+//       console.error("Authenticate error:", err);
+//     return res.status(500).json({ success: false, message: "Internal server error" });
+//   }
+// };
+
 export const authenticate = async (req, res, next) => {
   try {
-
-    /* ── Extract Token ── */
     const authHeader = req.headers.authorization;
 
     if (!authHeader?.startsWith("Bearer ")) {
@@ -24,7 +67,6 @@ export const authenticate = async (req, res, next) => {
 
     const token = authHeader.split(" ")[1];
 
-    /* ── Verify Token ── */
     let decoded;
     try {
       decoded = jwt.verify(token, process.env.JWT_SECRET, {
@@ -35,7 +77,6 @@ export const authenticate = async (req, res, next) => {
       return res.status(401).json({ success: false, message });
     }
 
-    /* ── Validate Payload ── */
     if (!decoded?.id || !decoded?.email) {
       return res.status(401).json({
         success: false,
@@ -43,7 +84,14 @@ export const authenticate = async (req, res, next) => {
       });
     }
 
-    /* ── Attach User ── */
+    // ── Admin token user routes లో use చేస్తే block ──
+    if (decoded.type === "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied: admin token cannot be used on user routes",
+      });
+    }
+
     req.user = decoded;
     next();
 
@@ -53,6 +101,8 @@ export const authenticate = async (req, res, next) => {
     return res.status(500).json({ success: false, message: "Internal server error" });
   }
 };
+
+// 
 
 /* ================= CHECK ACCOUNT STATUS ================= */
 export const checkAccountStatus = async (req, res, next) => {
@@ -124,13 +174,6 @@ const deleteAllUserData = async (userId) => {
 export const isAdmin = (req, res, next) => {
   if (req.user?.role !== "admin") {
     return res.status(403).json({ success: false, message: "Admin access only" });
-  }
-  next();
-};
-
-export const isUser = (req, res, next) => {
-  if (req.user?.role !== "user") {
-    return res.status(403).json({ success: false, message: "User access only" });
   }
   next();
 };
