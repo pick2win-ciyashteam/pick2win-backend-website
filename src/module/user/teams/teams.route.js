@@ -6,7 +6,7 @@ import { generateTeams, getMyGeneratedMatches, getMyGeneratedTeams, getMyTeams, 
 const router = express.Router();
 
 
-router.post("/generate-teams", generateTeams);
+router.post("/generate-teams", generateTeams);     
 
 
 router.get("/generate-matches", getMyGeneratedMatches);

@@ -80,40 +80,40 @@ export const logout = async (req, res) => {
 export const getProfile = async (req, res) => {
   try {
     /* ── 1. User + Subscription ── */
-    const [[user]] = await db.execute(
-      `SELECT
-         u.id,
-         u.fullname,
-         u.email,
-         u.mobile,
-         u.country,
-         u.date_of_birth,
-         u.email_verify,
-         u.mobile_verify,
-         u.account_status,
-         u.created_at,
+     const [[user]] = await db.execute(
+  `SELECT
+     u.id,
+     u.fullname,
+     u.email,
+     u.mobile,
+     u.country,
+     u.date_of_birth,
+     u.email_verify,
+     u.mobile_verify,
+     u.account_status,
+     u.created_at,
+     u.free_trial_used,
 
-         -- Subscription
-         us.plan_id,
-         us.plan_name,
-         us.matches_allowed,
-         us.matches_used,
-         (us.matches_allowed - us.matches_used) AS matches_remaining,
-         us.amount                               AS subscription_amount,
-         us.start_date                           AS subscription_start,
-         us.expiry_date                          AS subscription_expiry,
-         us.status                               AS subscription_status
+     us.plan_id,
+     us.plan_name,
+     us.matches_allowed,
+     us.matches_used,
+     (us.matches_allowed - us.matches_used) AS matches_remaining,
+     us.amount                               AS subscription_amount,
+     us.start_date                           AS subscription_start,
+     us.expiry_date                          AS subscription_expiry,
+     us.status                               AS subscription_status
 
-       FROM users u
-       LEFT JOIN user_subscriptions us
-         ON us.user_id = u.id
-        AND us.status = 'active'
-       WHERE u.id = ?
-         AND u.account_status != 'deleted'
-       ORDER BY us.id DESC
-       LIMIT 1`,
-      [req.user.id]
-    );
+   FROM users u
+   LEFT JOIN user_subscriptions us
+     ON us.user_id = u.id
+    AND us.status = 'active'
+   WHERE u.id = ?
+     AND u.account_status != 'deleted'
+   ORDER BY us.id DESC
+   LIMIT 1`,
+  [req.user.id]
+);
 
     if (!user) {
       return res.status(404).json({ success: false, message: "User not found" });
@@ -141,6 +141,8 @@ export const getProfile = async (req, res) => {
       [req.user.id]
     );
 
+ 
+
     const availableCoins = wallet    ? Number(wallet.coins)      : 0;
     const totalCoins     = purchased ? Number(purchased.total)   : 0;
     const usedCoins      = spent     ? Number(spent.total)       : 0;
@@ -159,6 +161,8 @@ export const getProfile = async (req, res) => {
         mobile_verify:  user.mobile_verify,
         account_status: user.account_status,
         created_at:     user.created_at,
+        free_trial_used:   user.free_trial_used,          
+        free_trial_status: user.free_trial_used === 1 ? "used" : "available",   
 
         /* ── Coins Wallet ── */
         coins: {
