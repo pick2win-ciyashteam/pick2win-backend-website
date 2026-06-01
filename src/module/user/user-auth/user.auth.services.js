@@ -288,11 +288,13 @@ const completeRegistration = async (sessionId) => {
 
   /* ── 2. Insert into users table ── */
   const [result] = await db.execute(
-    `INSERT INTO users (fullname, email, mobile, country, date_of_birth, password, account_status)
-     VALUES (?, ?, ?, ?, ?, ?, 'active')`,
-    [session.fullname, session.email, session.mobile,
-     session.country, session.date_of_birth, session.password]
-  );
+  `INSERT INTO users 
+     (fullname, email, mobile, country, date_of_birth, password,
+      account_status, email_verify, mobile_verify)
+   VALUES (?, ?, ?, ?, ?, ?, 'active', 1, 1)`,
+  [session.fullname, session.email, session.mobile,
+   session.country, session.date_of_birth, session.password]
+);
 
   const newUserId = result.insertId;
 
