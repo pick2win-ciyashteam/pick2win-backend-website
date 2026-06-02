@@ -11,7 +11,11 @@ import {
     getPastMatches,
     getUpcomingMatches,
     getEnginePerformance,
-    getLiveStream
+    getLiveStream,
+    getPeakAnalysis,
+    getEnginePerformanceReport,
+    getCapacityPlanning,
+    getMatchHistory
     
 } from "./admin.reports.controller.js";
 
@@ -36,12 +40,18 @@ router.get("/matches/past", getPastMatches);
 
 router.get("/matches/league", getLeagueMatches);      
 
-// router.get("/match-activity",getMatchDashboardReport);     
+    
 
 router.get("/match-activity",  getEnginePerformance);
 
 router.get("/matches/live-stream", getLiveStream);
 
+router.get("/matches/peak-analysis",  getPeakAnalysis);
 
+router.get("/matches/engine-performance", getEnginePerformanceReport);
+
+router.get("/matches/capacity-planning", getCapacityPlanning);
+
+router.get("/matches/match-history",  getMatchHistory);
 
 export default router;

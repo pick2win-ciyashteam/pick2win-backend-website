@@ -8,7 +8,7 @@ const router = Router();
 router.post  ("/",           adminLimiter, adminAuth(["super_admin"]), v.addPlan,    c.addPlan);
 router.get   ("/",           adminLimiter, adminAuth(["super_admin"]),               c.getAllPlans);
 router.get   ("/:id",        adminLimiter, adminAuth(["super_admin"]),               c.getPlanById);
-router.put   ("/:id",        adminLimiter, adminAuth(["super_admin"]), v.updatePlan, c.updatePlan);
+router.patch ("/:id",        adminLimiter, adminAuth(["super_admin"]), v.updatePlan, c.updatePlan);
 router.delete("/:id",        adminLimiter, adminAuth(["super_admin"]),               c.deletePlan);
 router.patch ("/:id/toggle", adminLimiter, adminAuth(["super_admin"]),               c.togglePlan);
 
