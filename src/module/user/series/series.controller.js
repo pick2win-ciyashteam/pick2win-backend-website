@@ -1,4 +1,4 @@
-import db from "../../../config/db.js"; 
+import db from "../../../config/db.js";
 
 /* ================= GET ALL SERIES ================= */
 // export const getAllSeries = async (req, res) => {
@@ -61,7 +61,7 @@ import db from "../../../config/db.js";
 //         ELSE 3
 //       END,
 //       m.start_time ASC`,
- 
+
 //   [Number(series.seriesid)]  
 // );
 
@@ -111,60 +111,41 @@ export const getAllSeries = async (req, res) => {
 
         const [matches] = await db.execute(
           `SELECT
-              m.id,
-              m.provider_match_id,
-              m.series_id,
-              m.start_time,
-              m.status,
-              m.lineupavailable,
-              m.lineup_status,
-              m.is_active,
+      m.id,
+      m.provider_match_id,
+      m.series_id,
+      m.start_time,
+      m.status,
+      m.lineupavailable,
+      m.lineup_status,
+      m.is_active,
 
-              COALESCE(ht.short_name, ht.name, 'TBA')  AS home_team_name,
-              COALESCE(awt.short_name, awt.name, 'TBA') AS away_team_name,
+      COALESCE(ht.short_name, ht.name, 'TBA')  AS home_team_name,
+      COALESCE(awt.short_name, awt.name, 'TBA') AS away_team_name,
 
-              ht.logo  AS home_team_logo,
-              awt.logo AS away_team_logo,
+      ht.logo  AS home_team_logo,
+      awt.logo AS away_team_logo,
 
-              /* ── generation status ── */
-              CASE
-                WHEN mgl.id IS NOT NULL THEN 1
-                ELSE 0
-              END                  AS teams_generated,
- 
-              mgl.created_at       AS generated_at
+      CASE
+        WHEN mgl.id IS NOT NULL THEN 1
+        ELSE 0
+      END            AS teams_generated,
+      mgl.created_at AS generated_at
 
-           FROM matches m
+   FROM matches m
+   LEFT JOIN teams ht  ON m.home_team_id = ht.id
+   LEFT JOIN teams awt ON m.away_team_id = awt.id
+   LEFT JOIN match_generation_log mgl
+          ON mgl.match_id = m.id
+         AND mgl.user_id  = ?
+         AND mgl.status   = 'success'
 
-           LEFT JOIN teams ht
-                  ON m.home_team_id = ht.id
+   WHERE m.series_id = ?
+     AND m.is_active = 1
+     AND m.status    = 'UPCOMING'
+     AND m.start_time >= NOW()
 
-           LEFT JOIN teams awt
-                  ON m.away_team_id = awt.id
-
-           /* join only for this user — NULL if not generated */
-           LEFT JOIN match_generation_log mgl
-                  ON mgl.match_id = m.id
-                 AND mgl.user_id  = ?
-                 AND mgl.status   = 'success'
-
-           WHERE m.series_id = ?
-             AND m.is_active  = 1
-             AND (
-                  m.status = 'LIVE'
-                  OR (
-                       m.status   = 'UPCOMING'
-                       AND m.start_time >= NOW()
-                     )
-                 )
-
-           ORDER BY
-              CASE
-                WHEN m.status = 'LIVE'     THEN 1
-                WHEN m.status = 'UPCOMING' THEN 2
-                ELSE 3
-              END,
-              m.start_time ASC`,
+   ORDER BY m.start_time ASC`,
 
           [userId, Number(series.seriesid)]
         );
@@ -174,9 +155,9 @@ export const getAllSeries = async (req, res) => {
           total_matches: matches.length,
           matches: matches.map((m) => ({
             ...m,
-            teams_generated:      Boolean(m.teams_generated),
-         
-            generated_at:         m.generated_at || null,
+            teams_generated: Boolean(m.teams_generated),
+
+            generated_at: m.generated_at || null,
           })),
         };
       })
@@ -199,7 +180,7 @@ export const getAllSeries = async (req, res) => {
 
 /* ================= GET SERIES BY ID ================= */
 export const getSeriesById = async (req, res) => {
-  try {  
+  try {
     const seriesid = Number(req.params.id);
 
     if (!req.params.id || isNaN(seriesid)) {
