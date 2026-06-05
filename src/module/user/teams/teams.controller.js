@@ -358,7 +358,7 @@ export const generateTeams = async (req, res) => {
   try {
     const userId = req.user.id;
     const { match_id, team_a, team_b } = req.body;
-
+ 
     /* ── 1. Validate input ── */
     if (!match_id || !team_a || !team_b) {
       return res.status(400).json({
@@ -366,33 +366,40 @@ export const generateTeams = async (req, res) => {
         message: "match_id, team_a, team_b required",
       });
     }
-
+ 
     if (!Array.isArray(team_a) || !Array.isArray(team_b)) {
       return res.status(400).json({
         success: false,
         message: "team_a and team_b must be arrays",
       });
     }
-
-    /* ── 2. Remove duplicates ── */
+ 
+    if (team_a.length < 1 || team_b.length < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "team_a and team_b must have at least 1 player each",
+      });
+    }
+ 
+    /* ── 2. Remove duplicates by name ── */
     const uniqueTeamA = team_a.filter(
       (p, idx, arr) => arr.findIndex((x) => x.name === p.name) === idx
     );
     const uniqueTeamB = team_b.filter(
       (p, idx, arr) => arr.findIndex((x) => x.name === p.name) === idx
     );
-
+ 
     /* ── 3. Match exists + status check ── */
     const [[match]] = await db.execute(
       `SELECT id, status, lineupavailable, lineup_status, start_time
        FROM matches WHERE id = ?`,
       [match_id]
     );
-
+ 
     if (!match) {
       return res.status(404).json({ success: false, message: "Match not found" });
     }
-
+ 
     if (match.status !== "UPCOMING") {
       return res.status(400).json({
         success: false,
@@ -404,50 +411,48 @@ export const generateTeams = async (req, res) => {
             : "Teams can only be generated for upcoming matches.",
       });
     }
-
+ 
     if (!match.lineupavailable || match.lineup_status !== "confirmed") {
       return res.status(400).json({
         success: false,
         message: "Playing XI not announced yet. Please wait for lineup confirmation.",
       });
     }
-
+ 
     /* ── 4. Check already generated ── */
     const [[existing]] = await db.execute(
-      `SELECT id FROM match_generation_log
-       WHERE match_id = ? AND user_id = ?`,
+      `SELECT id FROM match_generation_log WHERE match_id = ? AND user_id = ?`,
       [match_id, userId]
     );
-
+ 
     if (existing) {
       return res.status(400).json({
         success: false,
         message: "Teams already generated for this match",
       });
     }
-
+ 
     /* ── 5. Check coins ── */
     const [[wallet]] = await db.execute(
       `SELECT available_coins, used_coins, total_coins
        FROM user_coins WHERE user_id = ?`,
       [userId]
     );
-
+ 
     if (!wallet || Number(wallet.available_coins) < 1) {
       return res.status(400).json({
         success: false,
         message: "Insufficient coins. Please buy coins to generate teams.",
       });
     }
-
+ 
     /* ── 6. Check free trial ── */
     const [[userRow]] = await db.execute(
       `SELECT free_trial_used FROM users WHERE id = ?`,
       [userId]
     );
-
     const isFreeTrial = userRow && userRow.free_trial_used === 0;
-
+ 
     /* ── 7. Subscription check — skip if free trial ── */
     if (!isFreeTrial) {
       const [[subscription]] = await db.execute(
@@ -459,14 +464,14 @@ export const generateTeams = async (req, res) => {
          ORDER BY id DESC LIMIT 1`,
         [userId]
       );
-
+ 
       if (!subscription) {
         return res.status(400).json({
           success: false,
           message: "No active subscription found. Please purchase a plan.",
         });
       }
-
+ 
       if (Number(subscription.matches_used) >= Number(subscription.matches_allowed)) {
         return res.status(400).json({
           success: false,
@@ -474,74 +479,94 @@ export const generateTeams = async (req, res) => {
         });
       }
     }
-
+ 
     /* ── 8. Convert real names → coded names for UCT API ── */
     const toUCT = (players, side) => {
       const counters = { GK: 0, DEF: 0, MID: 0, FWD: 0 };
       return players.map((p) => {
-        counters[p.role] = (counters[p.role] || 0) + 1;
+        const role = p.role || "MID";
+        counters[role] = (counters[role] || 0) + 1;
+ 
         const prefix =
-          p.role === "GK"  ? "GK" :
-          p.role === "DEF" ? "D"  :
-          p.role === "MID" ? "M"  : "F";
-        const codedName = `${prefix}${counters[p.role]}_${side}`;
-
-        /* ── CVC → "C" for UCT API ── */
-        let apiCaptain = undefined;
-        if (p.captain === "C")   apiCaptain = "C";
-        if (p.captain === "VC")  apiCaptain = "VC";
-        if (p.captain === "CVC") apiCaptain = "C";
-
+          role === "GK"  ? "GK" :
+          role === "DEF" ? "D"  :
+          role === "MID" ? "M"  : "F";
+ 
+        const codedName = `${prefix}${counters[role]}_${side}`;
+ 
         return {
           name:          codedName,
-          role:          p.role,
-          ...(apiCaptain && { captain: apiCaptain }),
-          ...(p.mandate  && { mandate: p.mandate  }),
+          role,
+          captain:       p.captain  || null,   // C / VC / CVC — as-is, resolved below
+          mandate:       p.mandate  || null,
           _original:     p.name,
-          _cap_original: p.captain || null,
         };
       });
     };
-
+ 
     const uctTeamA = toUCT(uniqueTeamA, "A");
     const uctTeamB = toUCT(uniqueTeamB, "B");
-
-    /* ── 9. Validate C / VC / CVC ── */
-    const allPlayers = [...uctTeamA, ...uctTeamB];
-
-    const captains = allPlayers.filter(
-      (p) => p._cap_original === "C" || p._cap_original === "CVC"
-    );
-    const vcs = allPlayers.filter(
-      (p) => p._cap_original === "VC" || p._cap_original === "CVC"
-    );
-
-    if (captains.length < 1) {
-      return res.status(400).json({
-        success: false,
-        message: `Minimum 1 Captain required, got ${captains.length}`,
-      });
-    }
-
-    if (vcs.length < 1) {
-      return res.status(400).json({
-        success: false,
-        message: `Minimum 1 Vice-Captain required, got ${vcs.length}`,
-      });
-    }
-
-    /* ── 10. Build UCT payload ── */
-    const uctPayload = {
-      team_a: uctTeamA.map(({ _original, _cap_original, ...p }) => p),
-      team_b: uctTeamB.map(({ _original, _cap_original, ...p }) => p),
+    const allMapped = [...uctTeamA, ...uctTeamB];
+ 
+    /* ── 9. Resolve C / VC from CVC ──
+       Rules:
+       - CVC player acts as BOTH C and VC candidate
+       - UCT API needs exactly 1 C and 1 VC
+       - If someone is "C"   → send captain: "C"
+       - If someone is "VC"  → send captain: "VC"
+       - If someone is "CVC" → send captain: "C" (they cover both slots)
+       - Multiple VCs allowed in input — UCT API handles selection
+    ── */
+    const resolveCapForUCT = (capValue) => {
+      if (!capValue) return undefined;
+      if (capValue === "C")   return "C";
+      if (capValue === "VC")  return "VC";
+      if (capValue === "CVC") return "C";  // CVC → C for UCT
+      return undefined;
     };
-
+ 
+    /* ── 10. Validate at least 1 C candidate and 1 VC candidate ── */
+    const cCandidates  = allMapped.filter(p =>
+      p.captain === "C" || p.captain === "CVC"
+    );
+    const vcCandidates = allMapped.filter(p =>
+      p.captain === "VC" || p.captain === "CVC"
+    );
+ 
+    if (cCandidates.length < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "At least 1 Captain (C or CVC) required",
+      });
+    }
+ 
+    if (vcCandidates.length < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "At least 1 Vice-Captain (VC or CVC) required",
+      });
+    }
+ 
+    /* ── 11. Build UCT payload ── */
+    const buildUCTPlayer = (p) => {
+      const obj = { name: p.name, role: p.role };
+      const cap = resolveCapForUCT(p.captain);
+      if (cap)      obj.captain = cap;
+      if (p.mandate) obj.mandate = p.mandate;
+      return obj;
+    };
+ 
+    const uctPayload = {
+      team_a: uctTeamA.map(buildUCTPlayer),
+      team_b: uctTeamB.map(buildUCTPlayer),
+    };
+ 
     console.log("🚀 UCT Payload:", JSON.stringify(uctPayload, null, 2));
-
-    /* ── 11. Call UCT API ── */
+ 
+    /* ── 12. Call UCT API ── */
     const startTime = Date.now();
     let uctTeams    = [];
-
+ 
     try {
       const response = await axios.post(
         `${process.env.UCT_API}/football/teams`,
@@ -551,10 +576,10 @@ export const generateTeams = async (req, res) => {
           timeout: 30000,
         }
       );
-
+ 
       uctTeams = response.data || [];
-      console.log(`✅ UCT API — ${uctTeams.length} player entries across 20 teams`);
-
+      console.log(`✅ UCT API — ${uctTeams.length} player entries across teams`);
+ 
     } catch (apiError) {
       console.error("❌ UCT API Error:",
         apiError.response?.status,
@@ -566,44 +591,44 @@ export const generateTeams = async (req, res) => {
         details: apiError.response?.data,
       });
     }
-
+ 
     const generationTimeMs = Date.now() - startTime;
-
+ 
     if (!uctTeams.length) {
       return res.status(400).json({
         success: false,
         message: "UCT API returned no teams",
       });
     }
-
-    /* ── 12. Build name map + cap map ── */
+ 
+    /* ── 13. Build name map + cap map ── */
     const nameMap = {};
     const capMap  = {};
-
-    [...uctTeamA, ...uctTeamB].forEach((p) => {
-      nameMap[p.name] = p._original      || p.name;
-      capMap[p.name]  = p._cap_original  || null;
+ 
+    allMapped.forEach((p) => {
+      nameMap[p.name] = p._original || p.name;
+      capMap[p.name]  = p.captain   || null;
     });
-
-    /* ── 13. Transaction ── */
+ 
+    /* ── 14. Transaction ── */
     const conn = await db.getConnection();
     try {
       await conn.beginTransaction();
-
-      /* ── Re-check coins ── */
+ 
+      /* Re-check coins */
       const [[currentWallet]] = await conn.query(
         `SELECT available_coins, used_coins, total_coins
          FROM user_coins WHERE user_id = ? FOR UPDATE`,
         [userId]
       );
-
+ 
       if (!currentWallet || Number(currentWallet.available_coins) < 1) {
         await conn.rollback();
         conn.release();
         return res.status(400).json({ success: false, message: "Insufficient coins" });
       }
-
-      /* ── Deduct 1 coin ── */
+ 
+      /* Deduct 1 coin */
       await conn.query(
         `UPDATE user_coins
          SET available_coins = available_coins - 1,
@@ -611,16 +636,16 @@ export const generateTeams = async (req, res) => {
          WHERE user_id = ?`,
         [userId]
       );
-
-      /* ── Free trial mark ── */
+ 
+      /* Free trial mark */
       if (isFreeTrial) {
         await conn.query(
           `UPDATE users SET free_trial_used = 1 WHERE id = ?`,
           [userId]
         );
       }
-
-      /* ── Coin transaction log ── */
+ 
+      /* Coin transaction log */
       await conn.query(
         `INSERT INTO coins_transactions
            (user_id, coins, amount, transaction_type,
@@ -633,19 +658,19 @@ export const generateTeams = async (req, res) => {
           `Team generation — match ${match_id}`,
         ]
       );
-
-      /* ── Delete old teams ── */
+ 
+      /* Delete old teams */
       await conn.query(
         `DELETE FROM user_teams WHERE match_id = ? AND user_id = ?`,
         [match_id, userId]
       );
-
-      /* ── Store 20 teams ── */
+ 
+      /* Store teams */
       for (const player of uctTeams) {
         const realName    = nameMap[player.name] || player.name;
         const originalCap = capMap[player.name]  ?? player.cap ?? null;
         const capValue    = originalCap === "" ? null : originalCap;
-
+ 
         await conn.query(
           `INSERT INTO user_teams
              (match_id, user_id, dt_no, name, role, cap, original_name)
@@ -661,10 +686,10 @@ export const generateTeams = async (req, res) => {
           ]
         );
       }
-
-      /* ── Generation log ── */
+ 
+      /* Generation log */
       const totalTeams = [...new Set(uctTeams.map((p) => p.dt_no))].length;
-
+ 
       await conn.query(
         `INSERT INTO match_generation_log
            (match_id, user_id, total_teams, generation_time_ms, status)
@@ -675,9 +700,9 @@ export const generateTeams = async (req, res) => {
            created_at         = NOW()`,
         [match_id, userId, totalTeams, generationTimeMs]
       );
-
+ 
       await conn.commit();
-
+ 
       return res.status(200).json({
         success:         true,
         message:         `${totalTeams} teams generated successfully`,
@@ -686,14 +711,14 @@ export const generateTeams = async (req, res) => {
         coins_remaining: Number(currentWallet.available_coins) - 1,
         free_trial_used: isFreeTrial,
       });
-
+ 
     } catch (err) {
       await conn.rollback();
       throw err;
     } finally {
       conn.release();
     }
-
+ 
   } catch (err) {
     console.error("generateTeams error:", err.message);
     return res.status(500).json({ success: false, message: err.message });
